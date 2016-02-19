@@ -17,6 +17,10 @@
 #error TIMER_FREQ <= 1000 recommended
 #endif
 
+//list of threads + times
+static struct list threadList;
+static struct list timeList;
+
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
@@ -35,14 +39,21 @@ static void real_time_delay (int64_t num, int32_t denom);
 void
 timer_init (void) 
 {
-  pit_configure_channel (0, 2, TIMER_FREQ);
-  intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+	pit_configure_channel (0, 2, TIMER_FREQ);
+	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+
+	//intialize lists here
+	//previously was in timer_sleep
+	//realized we did not want to reinitialize everytime it was called
+	list_init(&threadList);
+	list_init(&timeList);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
 void
 timer_calibrate (void) 
 {
+
   unsigned high_bit, test_bit;
 
   ASSERT (intr_get_level () == INTR_ON);
@@ -86,14 +97,26 @@ timer_elapsed (int64_t then)
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
-void
-timer_sleep (int64_t ticks) 
-{
-  int64_t start = timer_ticks ();
+void timer_sleep (int64_t ticks){
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+	//check if interrupts are enabled
+	//interrupt disabled means that this was illegally called
+	ASSERT (intr_get_level () == INTR_ON);
+
+	//check if legal value of ticks
+	if(ticks<1){
+		return;
+	}
+
+	//disable interrupts to do operations
+	typedef enum intr_level oldLevel;
+	oldLevel=intr_disable();
+
+	//calculate the time to stop running at
+	ticks=ticks+timer_ticks();
+	list_push_back(&threadList, &thread_current->elem)
+	//how to create a list of int64_t?
+	list_push_back(&timeList)
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
