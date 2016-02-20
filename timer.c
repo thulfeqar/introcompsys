@@ -109,14 +109,22 @@ void timer_sleep (int64_t ticks){
 	}
 
 	//disable interrupts to do operations
-	typedef enum intr_level oldLevel;
-	oldLevel=intr_disable();
+	typedef enum intr_level prevInterrupt;
+	prevInterrupt=intr_disable();
 
 	//calculate the time to stop running at
-	ticks=ticks+timer_ticks();
+	thread_current()->sleep_ticks=ticks+timer_ticks();
+
 	list_push_back(&threadList, &thread_current->elem)
 	//how to create a list of int64_t?
-	list_push_back(&timeList)
+	//list_push_back(&timeList)
+		//rev - put times in thread instead
+
+	//design doc recommends not using this, not sure why
+	//seems to fill our needs perfectly to sleep the thread
+	thread_block();
+	
+	intr_set_level(prevInterrupt);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
