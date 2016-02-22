@@ -94,6 +94,31 @@ timer_elapsed (int64_t then)
 {
   return timer_ticks () - then;
 }
+//Ordered list sorter
+//don't need to use comparision data since sleep time in threads
+bool sleepSortHelper(struct list_elem *first, struct list_elem second, void *aux comparisonData){
+	struct thread one, two;
+	//get the individual threads from list
+	one=list_entry(first, struct thread, first->elem);
+	two=list_entry(second, struct thread, second->elem);
+
+	//get wake time
+	int64_t priOne=one->sleep_ticks;
+	int64_t priTwo=two->sleep_ticks;	
+
+	//check ordered list, >0 instead of >=0 so that 
+	//older threads with same wake time wake first
+
+	if((priOne-priTwo)>0){
+		return true;
+	}
+	else{
+		return false;
+	}
+
+	//shouldn't be used, just in case something goes wrong	
+	return false;
+}
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
