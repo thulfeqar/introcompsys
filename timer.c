@@ -10,6 +10,9 @@
   
 /* See [8254] for hardware details of the 8254 timer chip. */
 
+// Used for BSD scheduler
+#define RECALC_FREQ 4
+
 #if TIMER_FREQ < 19
 #error 8254 timer requires TIMER_FREQ >= 19
 #endif
@@ -17,7 +20,7 @@
 #error TIMER_FREQ <= 1000 recommended
 #endif
 
-//list of threads + times
+/* List of processes sleeping */
 static struct list threadList;
 
 /* Number of timer ticks since OS booted. */
@@ -38,21 +41,15 @@ static void real_time_delay (int64_t num, int32_t denom);
 void
 timer_init (void) 
 {
-	pit_configure_channel (0, 2, TIMER_FREQ);
-	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
-
-	//intialize lists here
-	//previously was in timer_sleep
-	//realized we did not want to reinitialize everytime it was called
-	list_init(&threadList);
-	list_init(&timeList);
+  pit_configure_channel (0, 2, TIMER_FREQ);
+  intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  list_init(&threadList);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
 void
 timer_calibrate (void) 
 {
-
   unsigned high_bit, test_bit;
 
   ASSERT (intr_get_level () == INTR_ON);
@@ -94,35 +91,22 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
-
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
-void timer_sleep (int64_t ticks){
-
-	//check if interrupts are enabled
-	//interrupt disabled means that this was illegally called
+void timer_sleep(int64_t ticks){
 	ASSERT (intr_get_level () == INTR_ON);
 
-	//check if legal value of ticks
-	if(ticks<1){
-		return;
-	}
+	if (ticks<1){return;}
 
-	//disable interrupts to do operations
-	typedef enum intr_level prevInterrupt;
-	prevInterrupt=intr_disable();
+	intr_disable();
 
-	//calculate the time to stop running at
-	thread_current()->sleep_ticks=ticks+timer_ticks();
-
-	//insert ordered item
-	list_insert_ordered(&threadList, &thread_current->elem, &sleepSortHelper);
-
-	//design doc recommends not using this, not sure why
-	//seems to fill our needs perfectly to sleep the thread
-	thread_block();
+	thread_current()->sleep_ticks=timer_ticks()+ticks;
 	
-	intr_set_level(prevInterrupt);
+	list_insert_ordered(&threadList, &thread_current()->elem, &sleepComparator, NULL);
+
+	thread_block();
+
+	intr_enable();
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -194,23 +178,24 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
-//PINTOS UPDATED Timer interrupt handler
-static void timer_interrupt(struct intr_frame *args UNUSED){
+
+/* Timer interrupt handler. */
+static void
+timer_interrupt(struct intr_frame *args UNUSED){
 	ticks++;
-	thread_tick ();
+	thread_tick();
 
-	struct list_elem *threadTicker;
+	struct list_elem *tickCounter = list_begin(&threadList);
+	struct thread *curThread;
 
-	//start at the beginning of the list and end if the last element in the list is reached
-	//every loop, reset to the beginning since elements will be removed from the start
-	//returns if current thread is not due to awake
-	for(threadTicker=list_begin(&threadList);threadTicker!=list_end(&threadList);threadTicker=list_begin(&threadList)){
-		if(list_entry(threadTicker,struct thread, elem)->sleep_ticks>ticks){return;}
-		else{
-			thread_unblock(list_entry(threadTicker,struct thread, elem));
-			list_remove(threadTicker);
-		}
+	while(list_size(&threadList)>0){
+		curThread=list_entry(tickCounter, struct thread, elem);
+		if((curThread->sleep_ticks)>ticks){return;}
+
+	//implicit else
+	list_pop_front(&threadList);
+	thread_unblock(curThread); // Unblock and add to ready list
+	tickCounter=list_begin(&threadList);
 	}
 }
 
@@ -284,3 +269,4 @@ real_time_delay (int64_t num, int32_t denom)
   ASSERT (denom % 1000 == 0);
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
 }
+

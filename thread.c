@@ -383,7 +383,7 @@ thread_get_recent_cpu (void)
   /* Not yet implemented. */
   return 0;
 }
-
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -432,7 +432,7 @@ kernel_thread (thread_func *function, void *aux)
   function (aux);       /* Execute the thread function. */
   thread_exit ();       /* If function() returns, kill the thread. */
 }
-
+
 /* Returns the running thread. */
 struct thread *
 running_thread (void) 
@@ -581,18 +581,16 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
-//PINTOS FUNCTION - Ordered list sorter
-//don't need to use comparision data since sleep time in threads
-bool sleepSortHelper(struct list_elem *first, struct list_elem second, void *aux comparisonData){
-	struct thread one, two;
+bool sleepComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED){
+	struct thread *one, *two;
 	//get the individual threads from list
-	one=list_entry(first, struct thread, first->elem);
-	two=list_entry(second, struct thread, second->elem);
+	one=list_entry(first, struct thread, elem);
+	two=list_entry(second, struct thread, elem);
 
 	//get wake time
 	int64_t priOne=one->sleep_ticks;
@@ -601,13 +599,8 @@ bool sleepSortHelper(struct list_elem *first, struct list_elem second, void *aux
 	//check ordered list, >0 instead of >=0 so that 
 	//older threads with same wake time wake first
 
-	if((priOne-priTwo)>0){
+	if((priTwo-priOne)>0){
 		return true;
 	}
-	else{
-		return false;
-	}
-
-	//shouldn't be used, just in case something goes wrong	
 	return false;
 }

@@ -142,6 +142,6 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 //PINTOS FUCTION - compare sleep values
-bool sleepSortHelper(struct list_elem *first, struct list_elem second, void *aux comparisonData);
+bool sleepComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
 
 #endif /* threads/thread.h */
