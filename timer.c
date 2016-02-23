@@ -19,7 +19,6 @@
 
 //list of threads + times
 static struct list threadList;
-static struct list timeList;
 
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
@@ -94,31 +93,7 @@ timer_elapsed (int64_t then)
 {
   return timer_ticks () - then;
 }
-//Ordered list sorter
-//don't need to use comparision data since sleep time in threads
-bool sleepSortHelper(struct list_elem *first, struct list_elem second, void *aux comparisonData){
-	struct thread one, two;
-	//get the individual threads from list
-	one=list_entry(first, struct thread, first->elem);
-	two=list_entry(second, struct thread, second->elem);
 
-	//get wake time
-	int64_t priOne=one->sleep_ticks;
-	int64_t priTwo=two->sleep_ticks;	
-
-	//check ordered list, >0 instead of >=0 so that 
-	//older threads with same wake time wake first
-
-	if((priOne-priTwo)>0){
-		return true;
-	}
-	else{
-		return false;
-	}
-
-	//shouldn't be used, just in case something goes wrong	
-	return false;
-}
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
@@ -140,10 +115,8 @@ void timer_sleep (int64_t ticks){
 	//calculate the time to stop running at
 	thread_current()->sleep_ticks=ticks+timer_ticks();
 
-	list_push_back(&threadList, &thread_current->elem)
-	//how to create a list of int64_t?
-	//list_push_back(&timeList)
-		//rev - put times in thread instead
+	//insert ordered item
+	list_insert_ordered(&threadList, &thread_current->elem, &sleepSortHelper);
 
 	//design doc recommends not using this, not sure why
 	//seems to fill our needs perfectly to sleep the thread
@@ -222,12 +195,23 @@ timer_print_stats (void)
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-/* Timer interrupt handler. */
-static void
-timer_interrupt (struct intr_frame *args UNUSED)
-{
-  ticks++;
-  thread_tick ();
+//PINTOS UPDATED Timer interrupt handler
+static void timer_interrupt(struct intr_frame *args UNUSED){
+	ticks++;
+	thread_tick ();
+
+	struct list_elem *threadTicker;
+
+	//start at the beginning of the list and end if the last element in the list is reached
+	//every loop, reset to the beginning since elements will be removed from the start
+	//returns if current thread is not due to awake
+	for(threadTicker=list_begin(&threadList);threadTicker!=list_end(&threadList);threadTicker=list_begin(&threadList)){
+		if(list_entry(threadTicker,struct thread, elem)->sleep_ticks>ticks){return;}
+		else{
+			thread_unblock(list_entry(threadTicker,struct thread, elem));
+			list_remove(threadTicker);
+		}
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

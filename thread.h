@@ -82,8 +82,9 @@ typedef int tid_t;
    blocked state is on a semaphore wait list. */
 struct thread
   {
-	//value of time to sleep until
+	//PINTOS VALUE - value of time to sleep until
 	int64_t sleep_ticks;
+
     /* Owned by thread.c. */
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
@@ -139,5 +140,8 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+//PINTOS FUCTION - compare sleep values
+bool sleepSortHelper(struct list_elem *first, struct list_elem second, void *aux comparisonData);
 
 #endif /* threads/thread.h */
