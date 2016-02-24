@@ -197,6 +197,7 @@ timer_interrupt(struct intr_frame *args UNUSED){
 	thread_unblock(curThread); // Unblock and add to ready list
 	tickCounter=list_begin(&threadList);
 	}
+	runHighest();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

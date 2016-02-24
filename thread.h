@@ -91,6 +91,10 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int original;	//original priority
+    struct lock *blockedLock;
+    struct list_elem elemTwo;
+    struct list donors;
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -143,5 +147,7 @@ int thread_get_load_avg (void);
 
 //PINTOS FUCTION - compare sleep values
 bool sleepComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
-
+bool priorityComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
+void updateOthers(void);
+void runHighest(void);
 #endif /* threads/thread.h */

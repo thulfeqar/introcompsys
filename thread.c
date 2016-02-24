@@ -92,7 +92,6 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -109,12 +108,13 @@ thread_start (void)
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
   thread_create ("idle", PRI_MIN, idle, &idle_started);
-
   /* Start preemptive thread scheduling. */
   intr_enable ();
 
   /* Wait for the idle thread to initialize idle_thread. */
+
   sema_down (&idle_started);
+
 }
 
 /* Called by the timer interrupt handler at each timer tick.
@@ -133,10 +133,6 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
-
-  /* Enforce preemption. */
-  if (++thread_ticks >= TIME_SLICE)
-    intr_yield_on_return ();
 }
 
 /* Prints thread statistics. */
@@ -203,11 +199,12 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
-
-  intr_set_level (old_level);
-
+  intr_set_level(old_level);
   /* Add to run queue. */
   thread_unblock (t);
+  old_level=intr_disable();
+  runHighest();
+  intr_set_level (old_level);
 
   return tid;
 }
@@ -245,7 +242,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem,&priorityComparator,NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -316,7 +313,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+	//PINTOS PROJECT CHANGE - list ordered
+    list_insert_ordered(&ready_list, &cur->elem, &priorityComparator, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -340,17 +338,88 @@ thread_foreach (thread_action_func *func, void *aux)
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
-void
-thread_set_priority (int new_priority) 
+void thread_set_priority(int new_priority){
+	enum intr_level old=intr_disable();
+	int old_priority=thread_current()->priority;
+	thread_current()->priority=new_priority;
+	thread_current()->original=new_priority;
+
+	//if we have to accept donation at new priority
+	if(list_size(&thread_current()->donors)!=0){
+		struct thread *highestDonor=list_entry(list_front(&thread_current()->donors), struct thread, elemTwo);
+		if(thread_current()->priority<highestDonor->priority){
+			//note this is not the base priority changed
+			thread_current()->priority=highestDonor->priority;
+		}
+	}
+	//donate if new<old
+	if(thread_current()->priority>old_priority){
+		updateOthers();
+	}
+	if(thread_current()->priority<old_priority){
+		runHighest();
+	}
+	intr_set_level(old);
+}
+
+void updateOthers(void){/*
+	struct lock *blockingLock=thread_current()->blockedLock;
+	struct thread *threadLocked=thread_current();
+	int depth=0;
+	for(depth=0;depth<8 && blockingLock;++depth){
+		//if there is a lock and the holder's priority<current priorty, donate to holder
+		if(blockingLock->holder && blockingLock->holder->priority<threadLocked->priority){
+			blockingLock->holder->priority=threadLocked->priority;
+			threadLocked=blockingLock->holder;
+			blockingLock=threadLocked->blockedLock;
+		}
+	}
+	return;*/
+int depth = 0;
+struct thread *t = thread_current();
+struct lock *l = t->blockedLock;
+while (l && depth < 8)
 {
-  thread_current ()->priority = new_priority;
+depth++;
+// If lock is not being held, return
+if (!l->holder)
+{
+return;
+}
+if (l->holder->priority >= t->priority)
+{
+return;
+}
+l->holder->priority = t->priority;
+t = l->holder;
+l = t->blockedLock;
+}
+}
+
+//run the higest priority process
+void runHighest(void){
+	if(list_size(&ready_list)!=0){
+		struct thread *highestPrio=list_entry(list_begin(&ready_list),struct thread, elem);
+		bool currentHigher=(thread_current()->priority>highestPrio->priority);
+		//if called from an interrupt, handle the timer activity
+		//yeild for same or lesser priority 
+		if(intr_context() && (!currentHigher ||(thread_current()->priority==highestPrio->priority && thread_ticks+2>TIME_SLICE))){
+			++thread_ticks;			
+			intr_yield_on_return();
+			return;
+		}
+		//catch the extra case
+		else if(intr_context()){return;}
+		else if(!currentHigher){thread_yield();}
+	}
 }
 
 /* Returns the current thread's priority. */
-int
-thread_get_priority (void) 
-{
-  return thread_current ()->priority;
+int thread_get_priority (void){
+	enum intr_level old=intr_disable();
+	int returnMe=thread_current()->priority;
+	intr_set_level(old);
+	return returnMe;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -465,11 +534,14 @@ init_thread (struct thread *t, const char *name, int priority)
 
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
+  t->blockedLock = NULL;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->original = priority;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
+  list_init(&t->donors);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -600,6 +672,25 @@ bool sleepComparator(const struct list_elem *first, const struct list_elem *seco
 	//older threads with same wake time wake first
 
 	if((priTwo-priOne)>0){
+		return true;
+	}
+	return false;
+}
+
+bool priorityComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED){
+	struct thread *one, *two;
+	//get the individual threads from list
+	one=list_entry(first, struct thread, elem);
+	two=list_entry(second, struct thread, elem);
+
+	//get priority
+	int priOne=one->priority;
+	int priTwo=two->priority;	
+
+	//check ordered list, >0 instead of >=0 so that 
+	//older threads with same wake time wake first
+
+	if((priOne-priTwo)>0){
 		return true;
 	}
 	return false;
