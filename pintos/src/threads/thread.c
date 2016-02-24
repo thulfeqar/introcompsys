@@ -201,6 +201,7 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
   intr_set_level(old_level);
   /* Add to run queue. */
+  //ensure that highest priority runs next
   thread_unblock (t);
   old_level=intr_disable();
   runHighest();
@@ -242,6 +243,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+  //insert ordered so that higest runs first
   list_insert_ordered(&ready_list, &t->elem,&priorityComparator,NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
@@ -313,7 +315,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-	//PINTOS PROJECT CHANGE - list ordered
+	//insert ordered so that highest priority runs first
     list_insert_ordered(&ready_list, &cur->elem, &priorityComparator, NULL);
   cur->status = THREAD_READY;
   schedule ();
@@ -338,6 +340,10 @@ thread_foreach (thread_action_func *func, void *aux)
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
+//first updates baseline priority and true priority
+//compraes current priority with old priority
+//if old>new, check if a higher thread can run
+//if new>old, check if any threads need to be donated to
 void thread_set_priority(int new_priority){
 	enum intr_level old=intr_disable();
 	int old_priority=thread_current()->priority;
@@ -362,6 +368,7 @@ void thread_set_priority(int new_priority){
 	intr_set_level(old);
 }
 
+//update the priority of a thread that this thread is waiting to run
 void updateOthers(void){
 	struct lock *blockingLock=thread_current()->blockedLock;
 	struct thread *threadLocked=thread_current();
@@ -396,6 +403,7 @@ void runHighest(void){
 }
 
 /* Returns the current thread's priority. */
+//interrupt to prevent desync of priority
 int thread_get_priority (void){
 	enum intr_level old=intr_disable();
 	int returnMe=thread_current()->priority;
@@ -639,7 +647,7 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
-
+//order threads from highest prio first to lowest prio last when called by insert_list_ordered or list_sort
 bool priorityComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED){
 	struct thread *one, *two;
 	//get the individual threads from list
