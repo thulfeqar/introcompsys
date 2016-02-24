@@ -65,8 +65,9 @@ void sema_down (struct semaphore *sema){
   old = intr_disable ();
   while (sema->value == 0) 
     {
-	updateOthers();
-	
+    	updateOthers(); //update priorities
+    	
+    	//insert new waiters in order of highest priority
 	list_insert_ordered(&sema->waiters, &thread_current ()->elem,&priorityComparator,NULL);
 
 	thread_block ();
@@ -113,13 +114,14 @@ sema_up (struct semaphore *sema)
 
   ASSERT (sema != NULL);
   old = intr_disable ();
+  //sort the list if its to be updated
   if (list_size(&sema->waiters)!=0){
     list_sort(&sema->waiters, &priorityComparator, NULL);
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   }
   sema->value++;
-  if(!intr_context()){
+  if(!intr_context()){//if handling scheduling, run the highest priority
 	runHighest();
   }
   intr_set_level (old);
@@ -202,11 +204,12 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
 
   enum intr_level old=intr_disable();
+  //if its locked, add thread to the donor list in order
   if(lock->holder){
   list_insert_ordered(&lock->holder->donors, &thread_current()->elemTwo, &priorityComparator, NULL);
   thread_current()->blockedLock=lock;
   }
-
+  
   sema_down (&lock->semaphore);
   thread_current()->blockedLock=NULL;
   lock->holder = thread_current();
@@ -246,7 +249,7 @@ void lock_release(struct lock *lock){
 	ASSERT (lock_held_by_current_thread (lock));
 
 	enum intr_level old=intr_disable();
-	//remove the threads wait for the lock
+	//remove the threads that wait for the lock
 	struct list_elem *entry=list_begin(&thread_current()->donors);
 	struct thread *listThread;
 	
@@ -260,6 +263,7 @@ void lock_release(struct lock *lock){
 		else{entry=list_next(entry);}
 	}
 
+	//update priorities of current thread and donors
 	struct thread *prioUpThread=thread_current();
 	prioUpThread->priority=prioUpThread->original;
 	if(list_size(&prioUpThread->donors)!=0){
@@ -324,6 +328,7 @@ cond_init (struct condition *cond)
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
 
+//check which semaphore has members waiting with the highest priority
 bool semaphoreComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED){
 	struct semaphore_elem *semaOne, *semaTwo;
 	semaOne=list_entry(first, struct semaphore_elem, elem);
@@ -352,6 +357,7 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
+  //insert ordered
   list_insert_ordered(&cond->waiters, &waiter.elem, &semaphoreComparator, NULL);
   lock_release (lock);
   sema_down (&waiter.semaphore);
@@ -373,6 +379,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
+	//update the priorities after updating list
   if (list_size (&cond->waiters)!=0){
     list_sort(&cond->waiters, &semaphoreComparator, NULL);
     sema_up (&list_entry (list_pop_front (&cond->waiters),
