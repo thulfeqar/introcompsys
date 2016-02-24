@@ -1,0 +1,199 @@
+﻿+-----------------+
+| ECE 434         |
+|Project1:Threads |
+| DESIGN DOCUMENT |
++-----------------+
+---- GROUP ----
+Nathan del Carmen                        <nmd111@scarletmail.rutgers.edu>
+Mark Dookharan                        <maku@malprogramming.net>
+Syed Naqvi                                <syed.naqvi@rutgers.edu>
+
+
+---- PRELIMINARIES ----
+6/6 alarm tests passed successfully
+
+
+Alarm Clock
+===========
+---- DATA STRUCTURES ----
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+in thread.h
+in struct thread
+        int64_t sleep_ticks  
+//used to hold the time for a thread to wake
+
+
+in timer.h & timer.c
+        bool sleepComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);        
+//used to sort the ordered list based with the soonest to wake thread first
+
+---- ALGORITHMS ----
+>> A2: Briefly describe what happens in a call to timer_sleep(),
+>> including the effects of the timer interrupt handler.
+
+---timer_sleep---
+1. timer_sleep(int64_t ticks) called by sleepy function
+2. check if ticks is valid, i.e. >0
+3. disable interrupts to prevent interference with the current thread
+4. calculate the current time and insert it into the ordered list, soonest to wake first
+5. sleep the current thread
+6. enable interrupts to allow normal activity to resume
+
+
+
+
+---timer_interrupt---
+1. access the top of sleeping thread list
+2. if the time it should wake is at or before the current time, wake it up
+3. repeat steps 1-2 until the top of sleeping thread list should no longer be awake yet
+4. run the highest priority thread
+
+---- SYNCHRONIZATION ----
+>> A3: How are race conditions avoided when multiple threads call
+>> timer_sleep() simultaneously?
+
+Interrupts are disabled when a valid sleep length is given so that the system cannot change the current time or the running thread. If the time were to tick while timer_sleep() was mid-operation an initially valid amount of time to sleep could be passed. Additionally, if the running thread is changed, the wrong thread may be slept. Once the thread has properly been slept, normal scheduling can resume.
+
+---- RATIONALE ----
+>> A4: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+
+Initially we considered to have a pair of unordered lists, listThreads and listWakeTimes such that the first time in listWakeTimes corresponded to the first thread in listThreads and so on. The wake time list would be iterated through every timer_interrupt() to find times that have passed. Then the corresponding threads in thread list would be woken. In retrospect, this was unneeded and over-complex. By introducing an ordered list and storing the wake time within the thread itself we eliminated an extra list and removed the need to iterate through the whole list.
+
+
+________________
+
+
+
+
+Priority Scheduler
+===============
+---- DATA STRUCTURES ----
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+
+---modified members in thread.c---
+        thread_create - run the highest priority thread after completion
+        thread_unblock - add ready threads to ready_list in order with highest priority threads first
+        thread_yield - add yielded threads to ready_list in order with highest priority threads first
+thread_set_priority - calculate new priority and baseline priority, then donates priority or runs higher priority threads
+thread_get_priority - use interrupt to make sure priority is not changed while returning
+init_thread - add initialization for current lock, baseline priority, and list of donors to thread
+
+
+---new members in thread.c---
+void updateOthers() - if waiting on lower priority threads that are waiting on a lock, donate priority of current thread to those threads so they can run first. Repeats to depth 8 for threads waiting on locks that need to run ahead of the current.
+void runHighest() - check to see if a higher priority thread should run, handles timer updating if called from timer.c
+bool priorityComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED) - used to insert threads into a list with the highest priority first
+
+
+---changes in thread.h---
+        declarations added for three new members above from thread.c
+in struct thread
+        int original - stores thread’s baseline priority
+        struct lock *blockedLock - lock, if any, that this thread is waiting for
+struct list_elem elemTwo - used in pintos lists since using the same elem can cause undefined behavior when removing items from lists
+struct list donors - list of threads donating priority to this current thread
+
+
+---modified members in synch.c---
+sema_down - updates priorities of other threads, and inserts current thread into the waiting list by order of highest priority first
+sema_up - resorts the list to make sure highest priority is first, runs the highest priority ready thread if it needs to handle next scheduled thread
+lock_acquire - if lock is already locked, add self to wait list in order, otherwise take the lock and decrease its semaphore
+lock_try_acquire - take ownership and clear current thread’s blocking lock
+lock_release - allow waiting threads to try and take the lock, update current priorities from donations after lock is taken
+cond_wait - uses semaphoreComparator to sort waiting threads into list
+cond_signal - sorts list with semaphoreComparator before performing sema_up
+
+
+---new members in synch.c---
+bool semaphoreComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED) - checks which semaphore has more/higher priority threads waiting
+
+
+---changes in synch.h---
+        declaration added for semaphoreComparator
+
+
+>> B2: Explain the data structure used to track priority donation.
+>> Use ASCII art to diagram a nested donation.  (Alternately, submit a
+>> .png file.)
+
+
+Threads A (priority 3), B (priority 10), C (priority 2), D (priority 1) wait for L held by E (priority 12)
+A(3)--3-->B(10){dlist:A}
+A(3)--3-->B(10){dlist:A}--10-->C(2){dlist:B}
+A(3)--3-->B(10){dlist:A}--10-->C(10){dlist:B}
+A(3)--3-->B(10){dlist:A}--10-->C(10){dlist:B}--10-->D(1){dlist:C} --1-->L(12)
+A(3)--3-->B(10){dlist:A}--10-->C(10){dlist:B}--10-->D(10){dlist:C} --10t-->L(12)
+if A is updated to 20
+A(20)--20-->B(10){dlist:A}--10-->C(10){dlist:B}--10-->D(10){dlist:C} --10-->L(12)
+A(20)--20-->B(20){dlist:A}--20-->C(10){dlist:B}--10-->D(10){dlist:C} --10-->L(12)
+A(20)--20-->B(20){dlist:A}--20-->C(20){dlist:B}--20-->D(10){dlist:C} --10-->L(12)
+A(20)--20-->B(10){dlist:A}--20-->C(20){dlist:B}--20-->D(20){dlist:C} --20-->Got(L)
+
+
+---- ALGORITHMS ----
+>> B3: How do you ensure that the highest priority thread waiting for
+>> a lock, semaphore, or condition variable wakes up first?
+
+
+When threads are added to the list of waiting threads, they are put into the list with highest priority at the top, or head, of the list.  They are thus granted the lock from the top of the list (highest priority) down (to lowest priority). Intermediate functions that change or add to the list force it to update to make sure that it is ordered correctly to grant locks.
+
+
+
+
+________________
+
+
+>> B4: Describe the sequence of events when a call to lock_acquire()
+>> causes a priority donation.  How is nested donation handled?
+
+1. Current_thread T calls lock_acquire(L) with permission P
+2. If L is already locked, add T to the list of waiting threads in order based on P
+3. Record T is waiting on lock L
+4. otherwise, decrease the semaphore and claim the lock
+
+---- SYNCHRONIZATION ----
+>> B5: Describe a potential race in thread_set_priority() and explain
+>> how your implementation avoids it.
+
+
+Interrupts are disabled at the start of the method and enabled at the end so that the value of priority cannot be accessed through other methods such as updateOthers() when a different thread is trying to donate to this one. Other threads could also attempt to insert themselves into a donor list while the current thread is donating to those priorities.
+
+---- RATIONALE ----
+>> B6: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+Currently, each thread holds a list of threads that are donating to it and has its priority updated when a new thread is added to that list. However, we initially considered having a large list of donor lists, each corresponding to a different thread. This quickly became impractical because of the large number of threads and the difficulty of accessing such a list in pintos. Additionally, it was much harder to donate priority through that in depth. 
+
+                           SURVEY QUESTIONS
+                           ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+The pintos specification is too detailed on minutae but does not give a good general overview of how different methods interact with each other before any changes are made. It took us a good half an hours to discover that init.c was responsible for loading up different parameters when initializing since printf often causes kernel panics when trying to find the source of a problem.
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+Understanding OS design was the easy part, the implementation was the difficult portion since C is unwieldy to code in.
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+>> Any other comments?
