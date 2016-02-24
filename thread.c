@@ -639,24 +639,6 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
-bool sleepComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED){
-	struct thread *one, *two;
-	//get the individual threads from list
-	one=list_entry(first, struct thread, elem);
-	two=list_entry(second, struct thread, elem);
-
-	//get wake time
-	int64_t priOne=one->sleep_ticks;
-	int64_t priTwo=two->sleep_ticks;	
-
-	//check ordered list, >0 instead of >=0 so that 
-	//older threads with same wake time wake first
-
-	if((priTwo-priOne)>0){
-		return true;
-	}
-	return false;
-}
 
 bool priorityComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED){
 	struct thread *one, *two;

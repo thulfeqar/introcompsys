@@ -91,22 +91,37 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+bool sleepComparator(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED){
+	struct thread *one, *two;
+	//get the individual threads from list
+	one=list_entry(first, struct thread, elem);
+	two=list_entry(second, struct thread, elem);
+
+	//get wake time
+	int64_t priOne=one->sleep_ticks;
+	int64_t priTwo=two->sleep_ticks;	
+
+	//check ordered list, >0 instead of >=0 so that 
+	//older threads with same wake time wake first
+
+	if((priTwo-priOne)>0){
+		return true;
+	}
+	return false;
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void timer_sleep(int64_t ticks){
 	ASSERT (intr_get_level () == INTR_ON);
 
-	if (ticks<1){return;}
-
-	intr_disable();
-
-	thread_current()->sleep_ticks=timer_ticks()+ticks;
-	
-	list_insert_ordered(&threadList, &thread_current()->elem, &sleepComparator, NULL);
-
-	thread_block();
-
-	intr_enable();
+	if(ticks>0){
+		intr_disable();
+		thread_current()->sleep_ticks=timer_ticks()+ticks;
+		list_insert_ordered(&threadList, &thread_current()->elem, &sleepComparator, NULL);
+		thread_block();
+		intr_enable();
+	}
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -185,17 +200,17 @@ timer_interrupt(struct intr_frame *args UNUSED){
 	ticks++;
 	thread_tick();
 
-	struct list_elem *tickCounter = list_begin(&threadList);
 	struct thread *curThread;
+	struct list_elem *tickCounter;
 
-	while(list_size(&threadList)>0){
+	for(tickCounter=list_begin(&threadList);list_size(&threadList)>0;tickCounter=list_begin(&threadList)){
 		curThread=list_entry(tickCounter, struct thread, elem);
 		if((curThread->sleep_ticks)>ticks){return;}
 
 	//implicit else
 	list_pop_front(&threadList);
 	thread_unblock(curThread); // Unblock and add to ready list
-	tickCounter=list_begin(&threadList);
+
 	}
 	runHighest();
 }
