@@ -129,13 +129,8 @@ Threads A (priority 3), B (priority 10), C (priority 2), D (priority 1) wait for
 A(3)--3-->B(10){dlist:A}
 A(3)--3-->B(10){dlist:A}--10-->C(2){dlist:B}
 A(3)--3-->B(10){dlist:A}--10-->C(10){dlist:B}
-A(3)--3-->B(10){dlist:A}--10-->C(10){dlist:B}--10-->D(1){dlist:C} --1-->L(12)
-A(3)--3-->B(10){dlist:A}--10-->C(10){dlist:B}--10-->D(10){dlist:C} --10t-->L(12)
-if A is updated to 20
-A(20)--20-->B(10){dlist:A}--10-->C(10){dlist:B}--10-->D(10){dlist:C} --10-->L(12)
-A(20)--20-->B(20){dlist:A}--20-->C(10){dlist:B}--10-->D(10){dlist:C} --10-->L(12)
-A(20)--20-->B(20){dlist:A}--20-->C(20){dlist:B}--20-->D(10){dlist:C} --10-->L(12)
-A(20)--20-->B(10){dlist:A}--20-->C(20){dlist:B}--20-->D(20){dlist:C} --20-->Got(L)
+A(3)--3-->B(10){dlist:A}--10-->C(10){dlist:B}--10-->D(1){dlist:C} --1-->E{L(12)}
+A(3)--3-->B(10){dlist:A}--10-->C(10){dlist:B}--10-->D(10){dlist:C} --10-->E{L(12)}
 
 
 ---- ALGORITHMS ----
