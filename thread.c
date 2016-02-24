@@ -362,7 +362,7 @@ void thread_set_priority(int new_priority){
 	intr_set_level(old);
 }
 
-void updateOthers(void){/*
+void updateOthers(void){
 	struct lock *blockingLock=thread_current()->blockedLock;
 	struct thread *threadLocked=thread_current();
 	int depth=0;
@@ -374,26 +374,7 @@ void updateOthers(void){/*
 			blockingLock=threadLocked->blockedLock;
 		}
 	}
-	return;*/
-int depth = 0;
-struct thread *t = thread_current();
-struct lock *l = t->blockedLock;
-while (l && depth < 8)
-{
-depth++;
-// If lock is not being held, return
-if (!l->holder)
-{
-return;
-}
-if (l->holder->priority >= t->priority)
-{
-return;
-}
-l->holder->priority = t->priority;
-t = l->holder;
-l = t->blockedLock;
-}
+	return;
 }
 
 //run the higest priority process
